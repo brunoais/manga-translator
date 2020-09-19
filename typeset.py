@@ -27,6 +27,8 @@ def flow_into_box(text, w, font=None, min_word_on_line=.3):
         else:
             c_text = text[idx:]
         c_width = text_width(c_text)
+        if c_width == 0:
+            c_width = 30
         proportion_of_fit = float(w - running_width) / c_width
         if proportion_of_fit > .95:
             line += c_text
@@ -65,7 +67,7 @@ def typeset_blurb(img, blurb):
     flowed = flow_into_box(text, blurb.w)
     d = ImageDraw.Draw(img)
     size = d.textsize(flowed)
-    x = (blurb.x + blurb.w / 2) - (size[0] / 2)
-    y = (blurb.y + blurb.h / 2) - (size[1] / 2)
-    img.paste((255, 255, 255), (x, y, x + size[0], y + size[1]))
+    x = int((blurb.x + blurb.w / 2) - (size[0] / 2))
+    y = int((blurb.y + blurb.h / 2) - (size[1] / 2))
+    img.paste((255, 255, 255), (x, y, x + size[0],  + size[1]))
     d.text((x, y), flowed.strip(), fill=(0, 0, 0))
