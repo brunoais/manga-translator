@@ -17,6 +17,7 @@ from PIL import Image
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("img")
+    parser.add_argument("sideMirror", default=True)
     parser.add_argument("out")
     args = parser.parse_args()
 
@@ -29,7 +30,13 @@ def main():
 #        translated = blurb
         typeset.typeset_blurb(to_typeset, translated)
 
-    to_typeset.save(args.out)
+    numpy_horizontal_concat = to_typeset
+    if args.sideMirror:
+        numpy_horizontal_concat = np.concatenate((img, to_typeset), axis=1)
+
+    Image.fromarray(numpy_horizontal_concat).save(args.out)
+    # to_typeset.save(args.out)
+
 
 if __name__ == "__main__":
     main()
