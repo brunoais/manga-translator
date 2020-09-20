@@ -1,3 +1,8 @@
+import os
+
+if os.name != 'nt':
+    os.environ.setdefault('TMPDIR', '/dev/shm')
+
 import argparse
 import numpy as np
 import dill as pickle
