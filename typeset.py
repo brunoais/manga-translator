@@ -5,6 +5,8 @@ from translate import TranslatedBlurb
 import math
 import dill as pickle
 
+def maxmin(minv, val, maxv):
+    return max(min(val, maxv), minv)
 
 def flow_into_box(text, w, font=None, min_word_on_line=.3):
     def text_width(l):
@@ -27,9 +29,7 @@ def flow_into_box(text, w, font=None, min_word_on_line=.3):
         else:
             c_text = text[idx:]
         c_width = text_width(c_text)
-        if c_width == 0:
-            c_width = 30
-        proportion_of_fit = float(w - running_width) / c_width
+        proportion_of_fit = float(w - running_width) / c_width if c_width != 0 else 0
         if proportion_of_fit > .95:
             line += c_text
             idx += len(c_text)
@@ -43,7 +43,7 @@ def flow_into_box(text, w, font=None, min_word_on_line=.3):
                 lines.append(line)
                 line = ""
             else:
-                split = max(int(proportion_of_fit * len(c_text)) / 2, 1)
+                split = int(max(proportion_of_fit * len(c_text) / 2, 1))
                 c_text = c_text[:split] + "-"
                 lines.append(c_text)
                 idx += len(c_text) - 1
@@ -60,14 +60,18 @@ def typeset_blurb(img, blurb):
     else:
         text = blurb.text
 
+
     area = blurb.w * blurb.h
-    fontsize = int(math.sqrt(area) / 10)
+    # fontsize = int(math.sqrt(area) / 20)
+    fontsize = int(math.sqrt(area) / maxmin(7, len(text) / 10, 20))
     font = ImageFont.truetype(font="/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size=fontsize)
     # pickle.dump(img, open("tts.pkl", mode="w"))
-    flowed = flow_into_box(text, blurb.w)
+    flowed = flow_into_box(text, blurb.w, font)
     d = ImageDraw.Draw(img)
-    size = d.textsize(flowed)
-    x = int((blurb.x + blurb.w / 2) - (size[0] / 2))
-    y = int((blurb.y + blurb.h / 2) - (size[1] / 2))
-    img.paste((255, 255, 255), (x, y, x + size[0],  + size[1]))
-    d.text((x, y), flowed.strip(), fill=(0, 0, 0))
+    size = d.textsize(flowed, font=font)
+    x = int((blurb.x + (blurb.w / 2)) - (size[0] / 2))
+    y = int((blurb.y + (blurb.h / 2)) - (size[1] / 2))
+    # x = int(blurb.x)
+    # y = int(blurb.y)
+    img.paste((255, 255, 255), (x, y, x + size[0], y + size[1]))
+    d.text((x, y), flowed.strip(), fill=(0, 0, 0), font=font)

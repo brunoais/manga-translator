@@ -1,6 +1,27 @@
 import subprocess
 import re
 
+import json
+
+
+def persist_to_file(file_name):
+
+    def decorator(original_func):
+
+        try:
+            cache = json.load(open(file_name, 'r'))
+        except (IOError, ValueError):
+            cache = {}
+
+        def new_func(param):
+            if param not in cache:
+                cache[param] = original_func(param)
+                json.dump(cache, open(file_name, 'w'))
+            return cache[param]
+
+        return new_func
+
+    return decorator
 
 class Blurb(object):
     def __init__(self, x, y, w, h, text, confidence=100.0):
@@ -17,6 +38,9 @@ class Blurb(object):
         return text
 
     def __unicode__(self):
+        return self.__str__()
+
+    def __str__(self):
         return str(self.x) + ',' + str(self.y) + ' ' + str(self.w) + 'x' + str(self.h) + ' ' + str(
             self.confidence) + '% :' + self.text
 
@@ -37,6 +61,7 @@ class TranslatedBlurb(Blurb):
                    translation)
 
 
+@persist_to_file("holds/cache_translations.json")
 def translate_text(text):
     bs = subprocess.check_output(["node", "translate.js", text])
     return bs.decode("latin-1")

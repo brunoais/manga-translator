@@ -1,6 +1,9 @@
 #!/usr/bin/python
+import re
 
 from PIL import Image
+from pytesseract import Output
+
 from translate import Blurb
 
 import sys
@@ -9,6 +12,8 @@ import dill as pickle
 import cv2
 
 import pytesseract
+
+latin_only = re.compile(r"""^[a-zA-Z0-9-_ー<>?'«»%& ]+$""")
 
 
 def get_params():
@@ -29,6 +34,42 @@ def get_params():
     configParams.append(('textord_debug_tabfind', '0'))
     params += " ".join([configParam(p[0], p[1]) for p in configParams])
     return params
+
+
+
+def is_allowed(text):
+    txt = text.strip().lower()
+
+    return (
+        len(txt) > 1 and
+        not latin_only.match(txt)
+
+    )
+
+
+def text_confidence(idata):
+    filtered_confidence = []
+    filtered_text = []
+
+    for confidence, character in zip(idata['conf'], idata['text']):
+        confidence = int(confidence)
+        if confidence < 0:
+            continue
+
+        filtered_confidence.append(confidence)
+        filtered_text.append(character)
+
+    average_confidence = sum(filtered_confidence) / len(filtered_confidence) if len(filtered_confidence) > 0 else -1
+
+    if average_confidence < 10:
+        return None
+
+    if average_confidence < 50:
+        print(f"Rejecting {''.join(idata['text'])} because of low confidence of {average_confidence}%")
+        return None
+
+    return ''.join(filtered_text)
+
 
 
 def get_blurbs(img):
@@ -76,11 +117,17 @@ def get_blurbs(img):
             image = image[y:y + h, x:x + w]
             pil_image = Image.fromarray(image)
 
-            text = pytesseract.image_to_string(pil_image, lang="jpn_vert", config=get_params())
-            if text:
-                blurb = Blurb(x, y, w, h, text)
-                blurbs.append(blurb)
-                print("Attempt: " + text)
+            try:
+                idata = pytesseract.image_to_data(pil_image, lang="jpn_vert", output_type=Output.DICT, config=get_params())
+                text = pytesseract.image_to_string(pil_image, lang="jpn_vert", config=get_params())
+            except IndexError:
+                pass
+            else:
+                confident_text = text_confidence(idata)
+                if confident_text and is_allowed(confident_text):
+                    blurb = Blurb(x, y, w, h, text)
+                    blurbs.append(blurb)
+                    print("Attempt: " + text)
 
     return blurbs
 
