@@ -3,20 +3,24 @@ import re
 
 import json
 
+from threading import RLock
 
 def persist_to_file(file_name):
 
-    def decorator(original_func):
+    locker = RLock()
+    try:
+        cache = json.load(open(file_name, 'r'))
+    except (IOError, ValueError):
+        cache = {}
 
-        try:
-            cache = json.load(open(file_name, 'r'))
-        except (IOError, ValueError):
-            cache = {}
+    def decorator(original_func):
 
         def new_func(param):
             if param not in cache:
-                cache[param] = original_func(param)
-                json.dump(cache, open(file_name, 'w'))
+                result = original_func(param)
+                with locker:
+                    cache[param] = result
+                    json.dump(cache, open(file_name, 'w'))
             return cache[param]
 
         return new_func
