@@ -1,10 +1,12 @@
 #!/usr/bin/python
 import re
+import string
 
 from PIL import Image
 from pytesseract import Output
 
 from translate import Blurb
+from functools import lru_cache
 
 import sys
 import numpy as np
@@ -16,25 +18,27 @@ import pytesseract
 latin_only = re.compile(r"""^[a-zA-Z0-9-_ー<>?'«»%& ]+$""")
 
 
-def get_params():
-    params = ""
-    params += "--psm 12"
+def tesseract_params():
 
     configParams = []
 
     def configParam(param, val):
         return "-c " + param + "=" + val
 
+    configParams.append(("--psm", "12"))
     configParams.append(("chop_enable", "T"))
     configParams.append(('use_new_state_cost', 'F'))
     configParams.append(('segment_segcost_rating', 'F'))
     configParams.append(('enable_new_segsearch', '0'))
     configParams.append(('textord_force_make_prop_words', 'F'))
-    configParams.append(('tessedit_char_blacklist', '}><L'))
+    configParams.append(('tessedit_char_blacklist', '}><Lrat' +
+                         string.printable.replace('"', '\\"').replace('"', "\\'").strip()))
     configParams.append(('textord_debug_tabfind', '0'))
-    params += " ".join([configParam(p[0], p[1]) for p in configParams])
+    params = " ".join([configParam(p[0], p[1]) for p in configParams])
     return params
 
+
+tesseract_params = tesseract_params()
 
 
 def is_allowed(text):
@@ -61,15 +65,19 @@ def text_confidence(idata):
 
     average_confidence = sum(filtered_confidence) / len(filtered_confidence) if len(filtered_confidence) > 0 else -1
 
-    if average_confidence < 10:
+    if average_confidence < 7:
         return None
 
-    if average_confidence < 50:
+    if average_confidence < 40:
         print(f"Rejecting {''.join(idata['text'])} because of low confidence of {average_confidence}%")
         return None
 
+    print("Attempt: ", ''.join(filtered_text))
     return ''.join(filtered_text)
 
+
+class CorruptedImageError(Exception):
+    pass
 
 
 def get_blurbs(img):
@@ -98,8 +106,7 @@ def get_blurbs(img):
 
     final_mask = cv2.cvtColor(np.zeros_like(img), cv2.COLOR_BGR2GRAY)
 
-    blurbs = []
-    for cnt in contours2:
+    def calc_blurb(cnt):
         area = cv2.contourArea(cnt)
         if area > 1000 and area < ((height / 3) * (width / 3)):
             draw_mask = cv2.cvtColor(np.zeros_like(img), cv2.COLOR_BGR2GRAY)
@@ -118,18 +125,37 @@ def get_blurbs(img):
             pil_image = Image.fromarray(image)
 
             try:
-                idata = pytesseract.image_to_data(pil_image, lang="jpn_vert", output_type=Output.DICT, config=get_params())
-                text = pytesseract.image_to_string(pil_image, lang="jpn_vert", config=get_params())
+                idata = pytesseract.image_to_data(pil_image, lang="jpn_ver5", output_type=Output.DICT,
+                                                  config=tesseract_params)
+                # idata = pytesseract.image_to_data(pil_image, lang="jpn_vert", output_type=Output.DATAFRAME,
+                #                                   config=tesseract_params)
+                # text = pytesseract.image_to_string(pil_image, lang="jpn_vert", config=tesseract_params)
             except IndexError:
                 pass
+            except (AttributeError, SystemError) as e:
+                raise CorruptedImageError() from e
             else:
+                cv2.imshow('Speech Bubble Identification', image)
                 confident_text = text_confidence(idata)
-                if confident_text and is_allowed(confident_text):
-                    blurb = Blurb(x, y, w, h, text)
-                    blurbs.append(blurb)
-                    print("Attempt: " + text)
 
-    return blurbs
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+
+                if confident_text and is_allowed(confident_text):
+                    blurb = Blurb(x, y, w, h, confident_text)
+                    print("Attempt: " + confident_text)
+                    return blurb
+
+    calcs = []
+    for cnt in contours2:
+        # calcs.append(PROCESSING_THREAD_POOL.submit(calc_blurb, cnt))
+        yield calc_blurb(cnt)
+
+    for calc in calcs:
+        result = calc.result(30)
+        if result:
+            yield result
+
 
 
 if __name__ == '__main__':
